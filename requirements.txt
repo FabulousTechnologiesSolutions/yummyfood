@@ -1,0 +1,44 @@
+# Core — Python 3.12
+Django==5.2.4
+djangorestframework==3.16.1
+djangorestframework-simplejwt==5.5.1
+
+# API extras
+django-cors-headers==4.7.0
+drf-spectacular==0.28.0
+django-filter==25.2
+
+# Database & env
+psycopg2-binary==2.9.10
+python-dotenv==1.1.0
+
+# Media & S3 storage
+Pillow==11.2.1
+django-storages[s3]==1.14.6
+boto3==1.38.46
+whitenoise==6.9.0
+
+# WebSockets (wired now, used in later phases)
+channels==4.3.2
+channels-redis==4.3.0
+redis==5.2.1
+
+# Celery task queue & scheduler
+celery[redis]==5.4.0
+django-celery-beat==2.9.0
+
+# ASGI server (Docker)
+uvicorn[standard]==0.34.2
+
+# Push notifications (optional; set FCM_ENABLED=true)
+firebase-admin==6.9.0
+
+# Tests
+pytest==8.3.5
+pytest-django==4.11.1
+factory-boy==3.3.3
+
+# CHS plot-finder harvest scripts (city-housing-sialkot-map/scripts/)
+requests>=2.31.0
+shapely>=2.0.0
+tqdm>=4.66.0
