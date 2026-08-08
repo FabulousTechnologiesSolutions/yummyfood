@@ -1,4 +1,4 @@
-"""Explore feed: geo filter + 1 promoted + soft organic (2 items + 1 deal)."""
+"""Video Feed: Explore-style compose isolated for Feed (ready-video gate + unwatched ranking)."""
 
 from __future__ import annotations
 
@@ -12,13 +12,18 @@ from django.utils import timezone
 
 from apps.analytics.models import ResourceAnalytics
 from apps.analytics.services.event_service import EventService
-from apps.discovery.models import ExploreImpression, ExploreViewerState
-from apps.discovery.services.viewer import ViewerIdentity, resolve_viewer
+from apps.feed.models import FeedImpression, FeedViewerState
+from apps.feed.services.viewer import ViewerIdentity, resolve_viewer
+from apps.mediahub.models import MediaProcessingStatus, MediaType
 from apps.restaurants.models import Deal, DealStatus, MenuItem, MenuItemStatus
 from apps.restaurants.services.deal_service import serialize_deal
 from apps.restaurants.services.menu_item_service import serialize_menu_item
+from apps.restaurants.services.restaurant_service import serialize_restaurant_public
 from core.exceptions import AppAPIException
 from core.utils import haversine_km
+
+
+WATCH_MS = 3000
 
 
 @dataclass
@@ -28,21 +33,16 @@ class FeedCandidate:
     distance_km: float | None
     score: float = 0.0
     serve_count: int = 0
+    watched_ms: int | None = None
     last_served_at: datetime | None = None
 
     @property
     def id(self) -> int:
         return self.obj.pk
 
-
-@dataclass
-class ExploreContext:
-    viewer: ViewerIdentity
-    state: ExploreViewerState
-    use_distance: bool
-    applied_radius_km: float | None
-    city_id: int | None
-    impressions: dict[tuple[str, int], ExploreImpression] = field(default_factory=dict)
+    @property
+    def is_watched(self) -> bool:
+        return self.watched_ms is not None and self.watched_ms >= WATCH_MS
 
 
 def _parse_float(value, *, name: str) -> float:
@@ -262,11 +262,23 @@ def _rotate(seq: list, offset: int) -> list:
     return seq[o:] + seq[:o]
 
 
+
+def _has_ready_feed_video(obj) -> bool:
+    for m in obj.media.all():
+        if (
+            m.media_type == MediaType.VIDEO
+            and m.is_feed_video
+            and m.processing_status == MediaProcessingStatus.READY
+        ):
+            return True
+    return False
+
+
 def _restaurant_ok(restaurant) -> bool:
     return not restaurant.is_paused and not restaurant.is_permanently_closed
 
 
-class ExploreFeedService:
+class FeedService:
     def get_feed(self, request, *, page: int, page_size: int) -> dict:
         if page < 1:
             raise AppAPIException(
@@ -335,8 +347,12 @@ class ExploreFeedService:
             key = (c.type, c.id)
             imp = impressions.get(key)
             c.serve_count = imp.serve_count if imp else 0
+            c.watched_ms = imp.watched_ms if imp else None
             c.last_served_at = imp.last_served_at if imp else None
             c.score = scores.get(key, 0.0)
+
+        item_cands = [c for c in item_cands if _has_ready_feed_video(c.obj)]
+        deal_cands = [c for c in deal_cands if _has_ready_feed_video(c.obj)]
 
         promoted = [
             c
@@ -351,10 +367,9 @@ class ExploreFeedService:
         organic_items = self._sort_organic(organic_items, use_distance=use_distance)
         organic_deals = self._sort_organic(organic_deals, use_distance=use_distance)
 
-        # Unread promoted stay on top. Rotate only after every promo has been seen,
-        # so equal exposure applies in all-seen mode without burying unseen promos.
-        all_promoted_seen = bool(promoted) and all(c.serve_count > 0 for c in promoted)
-        if all_promoted_seen:
+        # Unwatched promoted stay on top. Rotate only after every promo is watched (>=3s).
+        all_promoted_watched = bool(promoted) and all(c.is_watched for c in promoted)
+        if all_promoted_watched:
             promoted = _rotate(promoted, state.promoted_rotate_offset)
 
         composed = self._compose_all(
@@ -401,6 +416,7 @@ class ExploreFeedService:
                 'slot': entry['slot'],
                 'type': cand.type,
                 'data': payload,
+                'restaurant': serialize_restaurant_public(cand.obj.restaurant),
             }
             if use_distance and cand.distance_km is not None:
                 row['distance_km'] = round(cand.distance_km, 1)
@@ -409,8 +425,8 @@ class ExploreFeedService:
             results.append(row)
 
         if page == 1:
-            # Advance promo rotate only when it was applied (all promoted already seen).
-            if served_promoted and all_promoted_seen:
+            # Advance promo rotate only when it was applied (all promoted already watched).
+            if served_promoted and all_promoted_watched:
                 state.promoted_rotate_offset += 1
             # Organic offsets kept for diagnostics / future use; order uses impressions.
             state.organic_item_rotate_offset += served_items
@@ -439,14 +455,14 @@ class ExploreFeedService:
             'category_ids': content['category_ids'] or None,
         }
 
-    def _get_or_create_state(self, viewer: ViewerIdentity) -> ExploreViewerState:
+    def _get_or_create_state(self, viewer: ViewerIdentity) -> FeedViewerState:
         if viewer.user_id:
-            state, _ = ExploreViewerState.objects.get_or_create(
+            state, _ = FeedViewerState.objects.get_or_create(
                 user_id=viewer.user_id,
                 defaults={'ip_hash': None},
             )
             return state
-        state, _ = ExploreViewerState.objects.get_or_create(
+        state, _ = FeedViewerState.objects.get_or_create(
             ip_hash=viewer.ip_hash,
             defaults={'user': None},
         )
@@ -527,9 +543,9 @@ class ExploreFeedService:
     def _load_impressions(self, viewer, item_cands, deal_cands):
         result = {}
         if viewer.user_id:
-            qs = ExploreImpression.objects.filter(user_id=viewer.user_id)
+            qs = FeedImpression.objects.filter(user_id=viewer.user_id)
         else:
-            qs = ExploreImpression.objects.filter(ip_hash=viewer.ip_hash)
+            qs = FeedImpression.objects.filter(ip_hash=viewer.ip_hash)
         item_ids = [c.id for c in item_cands]
         deal_ids = [c.id for c in deal_cands]
         if item_ids:
@@ -559,15 +575,12 @@ class ExploreFeedService:
         return result
 
     def _sort_promoted(self, cands: list[FeedCandidate], *, use_distance: bool):
-        """
-        Unread promoted first (no analytics). Seen promoted by global
-        engagement_score, then distance/id. Caller may rotate when all seen.
-        """
+        """Unwatched promoted first; watched by engagement_score."""
         if not cands:
             return []
 
         def key(c: FeedCandidate):
-            if c.serve_count == 0:
+            if not c.is_watched:
                 if use_distance:
                     dist = c.distance_km if c.distance_km is not None else 1e18
                     return (0, dist, c.id)
@@ -580,24 +593,20 @@ class ExploreFeedService:
         return sorted(cands, key=key)
 
     def _sort_organic(self, cands: list[FeedCandidate], *, use_distance: bool):
-        """
-        Unread always before seen; unread band has no analytics.
-        Seen band uses global engagement_score.
-        When every candidate has been served, order by score then serve_count.
-        """
+        """Unwatched (watched_ms < 3000) on top; watched band by score."""
         if not cands:
             return []
-        all_seen = all(c.serve_count > 0 for c in cands)
+        all_watched = all(c.is_watched for c in cands)
         epoch = datetime.min.replace(tzinfo=dt_timezone.utc)
 
         def key(c: FeedCandidate):
-            if all_seen:
+            if all_watched:
                 return (
                     -c.score,
-                    -c.serve_count,
+                    -(c.watched_ms or 0),
                     c.id,
                 )
-            if c.serve_count == 0:
+            if not c.is_watched:
                 dist = (
                     c.distance_km
                     if (use_distance and c.distance_km is not None)
@@ -723,6 +732,6 @@ class ExploreFeedService:
             lookup['deal_id'] = cand.id
             lookup['menu_item'] = None
 
-        imp, _ = ExploreImpression.objects.get_or_create(**lookup, defaults=defaults)
+        imp, _ = FeedImpression.objects.get_or_create(**lookup, defaults=defaults)
         imp.serve_count = imp.serve_count + 1
         imp.save(update_fields=['serve_count', 'last_served_at'])

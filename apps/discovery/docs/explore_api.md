@@ -68,11 +68,19 @@ GET /api/explore/products/?minPrice=500&maxPrice=1000&categoryIds=12
 
 ### Feed composition
 
-Blocks of **1 promoted + up to 3 organic** (soft quota **2 items + 1 deal** when both exist).
+Repeating block **`P, O, D, O`** while organic stock remains:
 
-- No promoted → all organic (`OOOO`)
-- One type runs out → fill with the other
-- Never leave empty slots while eligible results remain
+| Slot | Meaning |
+|---|---|
+| `P` | Promoted item or deal |
+| `O` | Organic menu **item** (cross-fill with deal if items empty) |
+| `D` | Organic **deal** (cross-fill with item if deals empty) |
+
+- When unique promos are exhausted, **cycle** from the first promoted again (`P1, P2, P1, P2, …`) until organics run out — do **not** drop into promo-less blocks while organic remains.
+- Each served card (including a **repeated** promo) records `ExploreImpression` + analytics `impression`.
+- Stop cycling promoted once **both** organic item and deal pools are empty (no infinite P-only loop).
+- **No promoted** → organic-only blocks preferring **`O, D, O, O`** with the same cross-fill.
+- Never leave empty slots while eligible organic (or unique promo-only) stock remains.
 
 **Viewer history:**
 

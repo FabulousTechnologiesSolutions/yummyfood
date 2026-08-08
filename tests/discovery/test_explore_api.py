@@ -464,8 +464,9 @@ def test_promoted_not_duplicated_as_organic(api_client, near_restaurant):
         for r in res.data['results']
         if r['type'] == 'item' and r['data']['id'] == promo.id
     ]
-    assert len(matches) == 1
-    assert matches[0]['slot'] == 'promoted'
+    assert matches
+    assert all(m['slot'] == 'promoted' for m in matches)
+    assert not any(m['slot'] == 'organic' for m in matches)
 
 
 @pytest.mark.django_db
@@ -522,7 +523,7 @@ def test_mixed_unread_items_and_deals_next_page1(api_client, near_restaurant):
     assert first.status_code == 200
     assert len(first.data['results']) == 4
     served = {(r['type'], r['data']['id']) for r in first.data['results']}
-    # Soft 2I+1D: at least one deal and items on first block
+    # Organic-only O-D-O-O: at least one deal and items on first block
     assert any(t == 'item' for t, _ in served)
     assert any(t == 'deal' for t, _ in served)
 
@@ -541,15 +542,13 @@ def test_mixed_unread_items_and_deals_next_page1(api_client, near_restaurant):
     second_keys = [(r['type'], r['data']['id']) for r in second.data['results']]
     # Remaining unread of both types are served again and appear in this page
     assert remaining.issubset(set(second_keys))
-    # Soft 2I+1D: first unread item appears before filler; preference still takes items then a deal
     types = [t for t, _ in second_keys]
-    assert types.count('item') >= 2
+    assert types.count('item') >= 1
     assert types.count('deal') >= 1
     unread_positions = [
         i for i, key in enumerate(second_keys) if key in remaining
     ]
     assert min(unread_positions) == 0  # an unread leads
-    assert max(unread_positions) <= 2  # soft 2I+1D may insert one seen item before unread deal
 
 
 @pytest.mark.django_db
@@ -740,3 +739,104 @@ def test_promoted_unread_leads_then_seen_by_score(api_client, near_restaurant):
     res2 = api_client.get('/api/explore/products/?page_size=4', REMOTE_ADDR=ip)
     assert res2.data['results'][0]['slot'] == 'promoted'
     assert res2.data['results'][0]['data']['id'] == seen_high.id
+
+
+@pytest.mark.django_db
+def test_promoted_cycles_podO_pattern(api_client, near_restaurant):
+    """2 promos cycle: P1,O,D,O,P2,O,D,O,P1,…"""
+    now = timezone.now()
+    p1 = MenuItemFactory(
+        restaurant=near_restaurant,
+        name='CycleP1',
+        is_promoted=True,
+        promoted_starts_at=now - timedelta(hours=1),
+        promoted_ends_at=now + timedelta(days=1),
+    )
+    p2 = MenuItemFactory(
+        restaurant=near_restaurant,
+        name='CycleP2',
+        is_promoted=True,
+        promoted_starts_at=now - timedelta(hours=1),
+        promoted_ends_at=now + timedelta(days=1),
+    )
+    assert p1.id < p2.id
+    for i in range(6):
+        MenuItemFactory(restaurant=near_restaurant, name=f'OrgI{i}')
+    for i in range(3):
+        DealFactory(restaurant=near_restaurant, label=f'OrgD{i}')
+
+    res = api_client.get(
+        '/api/explore/products/',
+        {'page': '1', 'page_size': '12'},
+        REMOTE_ADDR='10.0.0.80',
+    )
+    assert res.status_code == 200
+    rows = res.data['results']
+    assert len(rows) >= 12
+    # P O D O × 3
+    assert rows[0]['slot'] == 'promoted' and rows[0]['data']['id'] == p1.id
+    assert rows[1]['type'] == 'item' and rows[1]['slot'] == 'organic'
+    assert rows[2]['type'] == 'deal' and rows[2]['slot'] == 'organic'
+    assert rows[3]['type'] == 'item' and rows[3]['slot'] == 'organic'
+    assert rows[4]['slot'] == 'promoted' and rows[4]['data']['id'] == p2.id
+    assert rows[8]['slot'] == 'promoted' and rows[8]['data']['id'] == p1.id  # cycle
+
+
+@pytest.mark.django_db
+def test_promoted_repeat_bumps_impression(api_client, near_restaurant):
+    now = timezone.now()
+    promo = MenuItemFactory(
+        restaurant=near_restaurant,
+        name='RepeatPromo',
+        is_promoted=True,
+        promoted_starts_at=now - timedelta(hours=1),
+        promoted_ends_at=now + timedelta(days=1),
+    )
+    for i in range(4):
+        MenuItemFactory(restaurant=near_restaurant, name=f'RI{i}')
+    for i in range(2):
+        DealFactory(restaurant=near_restaurant, label=f'RD{i}')
+
+    res = api_client.get(
+        '/api/explore/products/',
+        {'page': '1', 'page_size': '8'},
+        REMOTE_ADDR='10.0.0.81',
+    )
+    assert res.status_code == 200
+    promo_slots = [
+        r for r in res.data['results'] if r['slot'] == 'promoted' and r['data']['id'] == promo.id
+    ]
+    assert len(promo_slots) >= 2
+    from apps.discovery.services.viewer import hash_ip
+
+    imp = ExploreImpression.objects.get(
+        ip_hash=hash_ip('10.0.0.81'),
+        menu_item=promo,
+        deal=None,
+    )
+    assert imp.serve_count >= 2
+
+
+@pytest.mark.django_db
+def test_compose_cross_fill_when_no_deals(api_client, near_restaurant):
+    now = timezone.now()
+    promo = MenuItemFactory(
+        restaurant=near_restaurant,
+        name='CFPromo',
+        is_promoted=True,
+        promoted_starts_at=now - timedelta(hours=1),
+        promoted_ends_at=now + timedelta(days=1),
+    )
+    for i in range(6):
+        MenuItemFactory(restaurant=near_restaurant, name=f'CFI{i}')
+
+    res = api_client.get(
+        '/api/explore/products/',
+        {'page': '1', 'page_size': '4'},
+        REMOTE_ADDR='10.0.0.82',
+    )
+    assert res.status_code == 200
+    rows = res.data['results']
+    assert len(rows) == 4
+    assert rows[0]['slot'] == 'promoted' and rows[0]['data']['id'] == promo.id
+    assert all(r['slot'] == 'organic' and r['type'] == 'item' for r in rows[1:])
