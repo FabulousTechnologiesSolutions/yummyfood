@@ -49,6 +49,48 @@ class AddRestaurantSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=120)
 
 
+class RestaurantBrandingSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=['cover', 'logo'])
+    image = serializers.ImageField()
+
+
+class RestaurantProfileUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=120, required=False)
+    short_description = serializers.CharField(required=False, allow_blank=True)
+    cuisines = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        required=False,
+        max_length=3,
+    )
+    price_range = serializers.ChoiceField(
+        choices=['$', '$$', '$$$', '$$$$'],
+        required=False,
+        allow_blank=True,
+    )
+    primary_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    whatsapp_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    use_different_whatsapp = serializers.BooleanField(required=False)
+    secondary_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    street_address = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    area = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    city_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    lat = serializers.DecimalField(
+        max_digits=9, decimal_places=6, required=False, allow_null=True,
+    )
+    lng = serializers.DecimalField(
+        max_digits=9, decimal_places=6, required=False, allow_null=True,
+    )
+    is_paused = serializers.BooleanField(required=False)
+    promo_default_radius_km = serializers.IntegerField(
+        required=False, min_value=1, max_value=50,
+    )
+    promo_default_duration_days = serializers.IntegerField(
+        required=False, min_value=1, max_value=90,
+    )
+    notify_on_promo_approval = serializers.BooleanField(required=False)
+    auto_request_promo_on_deal = serializers.BooleanField(required=False)
+
+
 class SwitchRestaurantSerializer(serializers.Serializer):
     restaurant_name = serializers.CharField(required=False, allow_blank=True, default='')
 

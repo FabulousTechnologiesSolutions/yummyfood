@@ -7,7 +7,7 @@
 Mounted paths:
 
 | Prefix | Source |
-|---|---|
+|---|---|cover
 | `/api/auth/` | [`urls.py`](../urls.py) |
 | `/api/me/` | [`me_urls.py`](../me_urls.py) |
 
@@ -788,6 +788,150 @@ Me payload + new `tokens` (mode set to `restaurant`). Seeds restaurant preferenc
 
 ---
 
+## 13a. Get / update owned restaurant profile
+
+`GET /api/me/restaurant/`  
+`PATCH /api/me/restaurant/`  
+**Auth:** JWT  
+**Content-Type (PATCH):** `application/json`
+
+Returns/updates the authenticated user’s restaurant. Logo/cover uploads stay on `POST /api/me/restaurant/branding/`.
+
+### GET — Success `200`
+
+```json
+{
+  "id": 1,
+  "name": "Burger House",
+  "slug": "burger-house",
+  "short_description": "Best burgers in town",
+  "cuisines": ["Burgers", "American"],
+  "price_range": "$$",
+  "logo": "https://…/restaurants/logos/logo.png",
+  "cover": "https://…/restaurants/covers/cover.png",
+  "primary_phone": "+923001112233",
+  "whatsapp_number": "+923001112233",
+  "use_different_whatsapp": false,
+  "secondary_phone": "",
+  "street_address": "12 Mall Road",
+  "area": "Gulberg",
+  "city_id": 1,
+  "lat": "31.520400",
+  "lng": "74.358700",
+  "is_paused": false,
+  "is_permanently_closed": false,
+  "promo_default_radius_km": 5,
+  "promo_default_duration_days": 3,
+  "notify_on_promo_approval": true,
+  "auto_request_promo_on_deal": false,
+  "rating_avg": "0.0",
+  "rating_count": 0,
+  "setup_completeness_pct": 50
+}
+```
+
+### PATCH — Request (all fields optional)
+
+```json
+{
+  "name": "Burger House",
+  "short_description": "Best burgers in town",
+  "cuisines": ["Burgers", "American"],
+  "price_range": "$$",
+  "primary_phone": "+923001112233",
+  "whatsapp_number": "+923001112233",
+  "use_different_whatsapp": false,
+  "secondary_phone": "",
+  "street_address": "12 Mall Road",
+  "area": "Gulberg",
+  "city_id": 1,
+  "lat": 31.5204,
+  "lng": 74.3587,
+  "is_paused": false,
+  "promo_default_radius_km": 5,
+  "promo_default_duration_days": 3,
+  "notify_on_promo_approval": true,
+  "auto_request_promo_on_deal": false
+}
+```
+
+| Field | Notes |
+|---|---|
+| `cuisines` | max 3 strings |
+| `price_range` | `$` `$$` `$$$` `$$$$` or `""` |
+| phones | E.164 (e.g. `+92300…`); blank clears |
+| `lat` / `lng` | set together; both null clears |
+
+### PATCH — Success `200`
+
+Same shape as GET.
+
+### Errors
+
+| HTTP | Code | Message |
+|---|---|---|
+| 401 | `NOT_AUTHENTICATED` | … |
+| 403 | `RESTAURANT_REQUIRED` | Restaurant profile required. |
+| 400 | `RESTAURANT_NAME_REQUIRED` | name is required. |
+| 400 | `INVALID_CUISINES` | At most 3 cuisines are allowed. |
+| 400 | `INVALID_PRICE_RANGE` | Invalid price_range value. |
+| 400 | `INVALID_PHONE` | … |
+| 400 | `INVALID_COORDINATES` | Both lat and lng are required together. |
+
+---
+
+## 13b. Add or update restaurant cover / logo
+
+`POST /api/me/restaurant/branding/`  
+**Auth:** JWT  
+**Content-Type:** `multipart/form-data`
+
+Add or replace the owned restaurant’s `cover` or `logo` image. Replaces the previous file when one already exists.
+
+### Request (multipart)
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | yes | `cover` or `logo` |
+| `image` | yes | Image file |
+
+```
+type=cover
+image=<file>
+```
+
+```
+type=logo
+image=<file>
+```
+
+### Success — `200 OK`
+
+```json
+{
+  "type": "cover",
+  "restaurant": {
+    "id": 1,
+    "name": "Burger House",
+    "logo": null,
+    "cover": "http://localhost:6060/media/restaurants/covers/abc.jpg",
+    "setup_completeness_pct": 33
+  }
+}
+```
+
+`logo` / `cover` are absolute URLs (R2 public URL when configured, otherwise the request host + `/media/...`) or `null`.
+
+### Errors
+
+| HTTP | Code | Message |
+|---|---|---|
+| 401 | `NOT_AUTHENTICATED` | … |
+| 403 | `RESTAURANT_REQUIRED` | Restaurant profile required. |
+| 400 | `INVALID` | Missing/invalid `type` or `image` |
+
+---
+
 ## 14. Console access
 
 `GET /api/me/console-access/`  
@@ -944,6 +1088,8 @@ Same shape with `"needs_profile_update": false`. Never creates a second restaura
 | GET | `/api/me/profiles/` | JWT |
 | POST | `/api/me/customer-profile/` | JWT |
 | POST | `/api/me/restaurants/` | JWT |
+| GET/PATCH | `/api/me/restaurant/` | JWT |
+| POST | `/api/me/restaurant/branding/` | JWT |
 | GET | `/api/me/console-access/` | JWT |
 | POST | `/api/me/switch-to-customer/` | JWT |
 | POST | `/api/me/switch-to-restaurant/` | JWT |

@@ -239,7 +239,7 @@ class PublicRestaurantDetailView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, restaurant_id):
-        payload = RestaurantService().public_profile(restaurant_id)
+        payload = RestaurantService().public_profile(restaurant_id, request=request)
         return Response(payload)
 
 

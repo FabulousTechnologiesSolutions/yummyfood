@@ -955,7 +955,7 @@ Combined restaurant profile: essentials + visible categories + published menu it
 }
 ```
 
-`logo` / `cover` are public media URLs or `null`. `lat` / `lng` are decimal strings or `null`.
+`logo` / `cover` are absolute URLs (R2 public URL when configured, otherwise request host + `/media/...`) or `null`. `lat` / `lng` are decimal strings or `null`.
 
 **Errors:** `RESTAURANT_NOT_FOUND` (404).
 

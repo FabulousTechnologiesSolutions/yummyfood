@@ -215,6 +215,12 @@ class MediaAttachService:
         from django.core.files.storage import default_storage
 
         if source_key == dest_key:
+            if not default_storage.exists(source_key):
+                raise AppAPIException(
+                    code='MEDIA_FILE_MISSING',
+                    message='media.url does not point to an uploaded file.',
+                    status_code=400,
+                )
             media.file.name = dest_key
             media.save(update_fields=['file'])
             return
@@ -228,9 +234,15 @@ class MediaAttachService:
                     default_storage.delete(source_key)
                 except Exception:
                     pass
+        elif default_storage.exists(dest_key):
+            # Client already uploaded to the final key.
+            pass
         else:
-            # Assume client uploaded to dest already, or key is logical
-            dest_key = source_key
+            raise AppAPIException(
+                code='MEDIA_FILE_MISSING',
+                message='media.url does not point to an uploaded file.',
+                status_code=400,
+            )
 
         media.file.name = dest_key
         media.save(update_fields=['file'])

@@ -146,6 +146,13 @@ def _entity_id(media: ContentMedia):
     return media.menu_item_id or media.deal_id
 
 
+def _mark_processing_failed(media_id, error: str) -> None:
+    ContentMedia.objects.filter(id=media_id).update(
+        processing_status=MediaProcessingStatus.FAILED,
+        processing_error=error[:2000],
+    )
+
+
 @shared_task(
     bind=True,
     name='process_content_video',
@@ -160,12 +167,24 @@ def process_content_video(self, media_id):
     thumb_path = os.path.join(tmp_dir, 'thumb.jpg')
     original_path = None
 
+    media = ContentMedia.objects.filter(id=media_id, media_type=MediaType.VIDEO).first()
+    if media is None:
+        # Deleted before/while task ran (menu item DELETE, replace media, etc.).
+        logger.info('Content video skipped (deleted): %s', media_id)
+        return
+
     try:
-        media = ContentMedia.objects.get(id=media_id, media_type=MediaType.VIDEO)
         if not media.is_feed_video:
             return
         media.processing_status = MediaProcessingStatus.PROCESSING
         media.save(update_fields=['processing_status'])
+
+        if not media.file or not media.file.name:
+            _mark_processing_failed(media_id, 'Video file is missing.')
+            return
+
+        if not default_storage.exists(media.file.name):
+            raise FileNotFoundError(f'File does not exist: {media.file.name}')
 
         os.makedirs(hls_dir, exist_ok=True)
         original_path = _download_original_to_temp(media)
@@ -223,6 +242,12 @@ def process_content_video(self, media_id):
                 'hlsUrl': get_public_url(hls_key),
             })
 
+        # Re-fetch in case row was deleted mid-processing.
+        media = ContentMedia.objects.filter(id=media_id, media_type=MediaType.VIDEO).first()
+        if media is None:
+            logger.info('Content video skipped (deleted before save): %s', media_id)
+            return
+
         media.processing_status = MediaProcessingStatus.READY
         media.duration = duration
         media.thumbnail_key = thumbnail_key
@@ -236,15 +261,19 @@ def process_content_video(self, media_id):
             'hls_master_key', 'hls_master_url', 'resolutions', 'processing_error',
         ])
         logger.info('Content video ready: %s', media_id)
+    except ContentMedia.DoesNotExist:
+        logger.info('Content video skipped (deleted during processing): %s', media_id)
+        return
     except Exception as exc:
+        # Never retry when the row is already gone.
+        if not ContentMedia.objects.filter(id=media_id).exists():
+            logger.info('Content video skipped (deleted after error): %s', media_id)
+            return
         logger.exception('Content video processing failed for %s', media_id)
         if self.request.retries >= self.max_retries:
-            ContentMedia.objects.filter(id=media_id).update(
-                processing_status=MediaProcessingStatus.FAILED,
-                processing_error=str(exc),
-            )
+            _mark_processing_failed(media_id, str(exc))
             logger.error('Content video permanently failed: %s — %s', media_id, exc)
-            raise
+            return
         raise self.retry(exc=exc) from exc
     finally:
         if original_path and os.path.exists(original_path):

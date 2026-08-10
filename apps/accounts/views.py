@@ -20,8 +20,10 @@ from apps.accounts.serializers import (
     PasswordResetSerializer,
     RefreshSerializer,
     RegisterSerializer,
+    RestaurantBrandingSerializer,
     RestaurantNotificationSerializer,
     RestaurantPreferenceSerializer,
+    RestaurantProfileUpdateSerializer,
     SwitchRestaurantSerializer,
 )
 from apps.accounts.services import (
@@ -241,6 +243,46 @@ class AddRestaurantView(APIView):
             name=serializer.validated_data['name'],
         )
         return Response(result, status=status.HTTP_201_CREATED)
+
+
+class MeRestaurantView(APIView):
+    """GET/PATCH owned restaurant profile."""
+
+    permission_classes = [IsAuthenticatedAndActive]
+
+    def get(self, request):
+        return Response(
+            ProfileService().get_restaurant_profile(user=request.user, request=request)
+        )
+
+    @extend_schema(request=RestaurantProfileUpdateSerializer)
+    def patch(self, request):
+        serializer = RestaurantProfileUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        result = ProfileService().update_restaurant_profile(
+            user=request.user,
+            data=serializer.validated_data,
+            request=request,
+        )
+        return Response(result)
+
+
+class RestaurantBrandingView(APIView):
+    """Add or replace restaurant cover / logo (multipart)."""
+
+    permission_classes = [IsAuthenticatedAndActive]
+
+    @extend_schema(request=RestaurantBrandingSerializer)
+    def post(self, request):
+        serializer = RestaurantBrandingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = ProfileService().update_restaurant_branding(
+            user=request.user,
+            branding_type=serializer.validated_data['type'],
+            image=serializer.validated_data['image'],
+            request=request,
+        )
+        return Response(result)
 
 
 class ConsoleAccessView(APIView):

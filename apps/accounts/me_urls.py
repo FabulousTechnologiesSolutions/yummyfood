@@ -8,6 +8,12 @@ urlpatterns = [
     path('me/profiles/', views.ProfilesView.as_view(), name='me-profiles'),
     path('me/customer-profile/', views.AddCustomerProfileView.as_view(), name='me-customer-profile'),
     path('me/restaurants/', views.AddRestaurantView.as_view(), name='me-restaurants'),
+    path('me/restaurant/', views.MeRestaurantView.as_view(), name='me-restaurant'),
+    path(
+        'me/restaurant/branding/',
+        views.RestaurantBrandingView.as_view(),
+        name='me-restaurant-branding',
+    ),
     path('me/console-access/', views.ConsoleAccessView.as_view(), name='me-console-access'),
     path('me/switch-to-customer/', views.SwitchToCustomerView.as_view(), name='me-switch-customer'),
     path('me/switch-to-restaurant/', views.SwitchToRestaurantView.as_view(), name='me-switch-restaurant'),

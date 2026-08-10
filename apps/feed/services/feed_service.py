@@ -416,7 +416,7 @@ class FeedService:
                 'slot': entry['slot'],
                 'type': cand.type,
                 'data': payload,
-                'restaurant': serialize_restaurant_public(cand.obj.restaurant),
+                'restaurant': serialize_restaurant_public(cand.obj.restaurant, request=request),
             }
             if use_distance and cand.distance_km is not None:
                 row['distance_km'] = round(cand.distance_km, 1)

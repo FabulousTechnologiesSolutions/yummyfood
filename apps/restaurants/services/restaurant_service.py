@@ -17,16 +17,23 @@ from apps.restaurants.services.seeding import seed_default_categories
 from core.exceptions import AppAPIException
 
 
-def _media_url(field) -> str | None:
+def _media_url(field, request=None) -> str | None:
     if not field:
         return None
     try:
-        return field.url
+        url = field.url
     except Exception:
         return None
+    if not url:
+        return None
+    if url.startswith(('http://', 'https://')):
+        return url
+    if request is not None:
+        return request.build_absolute_uri(url)
+    return url
 
 
-def serialize_restaurant_public(restaurant: Restaurant) -> dict:
+def serialize_restaurant_public(restaurant: Restaurant, request=None) -> dict:
     return {
         'id': restaurant.id,
         'name': restaurant.name,
@@ -34,8 +41,8 @@ def serialize_restaurant_public(restaurant: Restaurant) -> dict:
         'short_description': restaurant.short_description,
         'cuisines': restaurant.cuisines or [],
         'price_range': restaurant.price_range,
-        'logo': _media_url(restaurant.logo),
-        'cover': _media_url(restaurant.cover),
+        'logo': _media_url(restaurant.logo, request=request),
+        'cover': _media_url(restaurant.cover, request=request),
         'primary_phone': restaurant.primary_phone,
         'whatsapp_number': restaurant.whatsapp_number,
         'street_address': restaurant.street_address,
@@ -50,6 +57,8 @@ def serialize_restaurant_public(restaurant: Restaurant) -> dict:
 
 
 class RestaurantService:
+    media_url = staticmethod(_media_url)
+
     @transaction.atomic
     def create_shell(self, *, owner, name: str) -> Restaurant:
         if Restaurant.objects.filter(owner=owner).exists():
@@ -68,7 +77,7 @@ class RestaurantService:
         seed_default_categories()
         return restaurant
 
-    def public_profile(self, restaurant_id) -> dict:
+    def public_profile(self, restaurant_id, request=None) -> dict:
         try:
             restaurant = Restaurant.objects.get(id=restaurant_id)
         except Restaurant.DoesNotExist:
@@ -102,7 +111,7 @@ class RestaurantService:
         )
 
         return {
-            'restaurant': serialize_restaurant_public(restaurant),
+            'restaurant': serialize_restaurant_public(restaurant, request=request),
             'categories': [serialize_category(c) for c in categories],
             'menu_items': [serialize_menu_item(i) for i in items],
             'deals': [serialize_deal(d) for d in deals],

@@ -121,3 +121,73 @@ def test_process_content_video_mocked(monkeypatch, restaurant_user):
         ],
     )
     assert 'id' in called
+
+
+@pytest.mark.django_db
+def test_process_content_video_missing_file_marks_failed(restaurant_user):
+    from apps.mediahub.models import MediaProcessingStatus
+    from apps.mediahub.tasks import process_content_video
+    from apps.restaurants.models import MenuItem, MenuItemSize
+
+    restaurant = restaurant_user.restaurant
+    item = MenuItem.objects.create(restaurant=restaurant, name='MissingVid', base_price='1.00')
+    MenuItemSize.objects.create(menu_item=item, label='R', price='1.00')
+
+    media = ContentMedia.objects.create(
+        restaurant=restaurant,
+        entity_type=MediaEntityType.MENU_ITEM,
+        menu_item=item,
+        media_type=MediaType.VIDEO,
+        is_feed_video=True,
+        processing_status=MediaProcessingStatus.PENDING,
+    )
+    media.file.name = f'uploads/tmp/{restaurant.id}/does-not-exist.mp4'
+    media.save(update_fields=['file'])
+
+    # Exhaust retries in one call path: run unbound with retries already at max.
+    process_content_video.push_request(retries=process_content_video.max_retries)
+    try:
+        process_content_video.run(str(media.id))
+    finally:
+        process_content_video.pop_request()
+
+    media.refresh_from_db()
+    assert media.processing_status == MediaProcessingStatus.FAILED
+    assert 'does not exist' in media.processing_error.lower()
+
+
+@pytest.mark.django_db
+def test_process_content_video_deleted_media_is_noop():
+    from apps.mediahub.tasks import process_content_video
+
+    # Should return without raising.
+    process_content_video.run(str(uuid.uuid4()))
+
+
+@pytest.mark.django_db
+def test_sync_rejects_missing_upload_file(restaurant_user):
+    from apps.mediahub.services.media_attach_service import MediaAttachService
+    from apps.restaurants.models import MenuItem, MenuItemSize
+    from core.exceptions import AppAPIException
+
+    restaurant = restaurant_user.restaurant
+    item = MenuItem.objects.create(restaurant=restaurant, name='NoFile', base_price='1.00')
+    MenuItemSize.objects.create(menu_item=item, label='R', price='1.00')
+
+    img = f'uploads/tmp/{restaurant.id}/{uuid.uuid4().hex}.jpg'
+    default_storage.save(img, ContentFile(b'i'))
+    vid = f'uploads/tmp/{restaurant.id}/{uuid.uuid4().hex}.mp4'
+    # video intentionally not saved to storage
+
+    with pytest.raises(AppAPIException) as exc:
+        MediaAttachService().sync_for_menu_item(
+            restaurant=restaurant,
+            menu_item=item,
+            media_list=[
+                {'type': 'image', 'url': img, 'is_cover': True},
+                {'type': 'video', 'url': vid},
+            ],
+            enqueue_videos=False,
+        )
+    assert exc.value.detail_code == 'MEDIA_FILE_MISSING'
+    assert ContentMedia.objects.filter(menu_item=item).count() == 0

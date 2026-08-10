@@ -1,5 +1,4 @@
 services:
-
   web:
     build: .
     ports:
@@ -26,7 +25,7 @@ services:
     volumes:
       - .:/app
       - media_data:/app/media
-
+      - log_data:/app/logs
   celery:
     build: .
     entrypoint: []
@@ -53,7 +52,7 @@ services:
     volumes:
       - .:/app
       - media_data:/app/media
-
+      - log_data:/app/logs
   celery-beat:
     build: .
     entrypoint: []
@@ -80,7 +79,7 @@ services:
     volumes:
       - .:/app
       - media_data:/app/media
-
+      - log_data:/app/logs
   db:
     image: postgres:16-alpine
     environment:
@@ -88,15 +87,14 @@ services:
       POSTGRES_USER: foodapp
       POSTGRES_PASSWORD: foodapp
     ports:
-      - "5437:5432"
+      - "5438:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
   redis:
     image: redis:7-alpine
     ports:
-      - "6370:6379"
-
+      - "6371:6379"
 volumes:
   postgres_data:
   media_data:
+  log_data:

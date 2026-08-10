@@ -16,6 +16,7 @@ ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     '0.0.0.0',
+    '164.68.125.17',
     '192.168.1.41',
     '192.168.1.65',
     'propertymanage-be.thefabulousshow.com',
