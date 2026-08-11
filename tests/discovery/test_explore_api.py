@@ -8,12 +8,13 @@ from apps.discovery.models import ExploreImpression, ExploreViewerState
 from apps.restaurants.models import MenuItemStatus
 from tests.accounts.factories import RestaurantFactory
 from tests.discovery.factories import DealFactory, MenuItemFactory, ResourceAnalyticsFactory
+from tests.geo.factories import CityFactory
 
 
-def _place(restaurant, lat, lng, city_id=1):
+def _place(restaurant, lat, lng, city):
     restaurant.lat = Decimal(str(lat))
     restaurant.lng = Decimal(str(lng))
-    restaurant.city_id = city_id
+    restaurant.city = city
     restaurant.is_paused = False
     restaurant.is_permanently_closed = False
     restaurant.save()
@@ -21,16 +22,26 @@ def _place(restaurant, lat, lng, city_id=1):
 
 
 @pytest.fixture
-def near_restaurant():
-    r = RestaurantFactory()
-    return _place(r, 31.5200, 74.3500, city_id=10)
+def main_city(db):
+    return CityFactory(name='MainCity')
 
 
 @pytest.fixture
-def far_restaurant():
+def other_city(db):
+    return CityFactory(name='OtherCity')
+
+
+@pytest.fixture
+def near_restaurant(main_city):
+    r = RestaurantFactory()
+    return _place(r, 31.5200, 74.3500, main_city)
+
+
+@pytest.fixture
+def far_restaurant(main_city):
     r = RestaurantFactory()
     # ~60km away roughly
-    return _place(r, 32.1000, 74.3500, city_id=10)
+    return _place(r, 32.1000, 74.3500, main_city)
 
 
 @pytest.mark.django_db
@@ -122,18 +133,30 @@ def test_invalid_distance_km(api_client):
 
 
 @pytest.mark.django_db
-def test_city_filter(api_client, near_restaurant):
+def test_city_filter(api_client, near_restaurant, main_city, other_city):
     other = RestaurantFactory()
-    _place(other, 31.52, 74.35, city_id=99)
+    _place(other, 31.52, 74.35, other_city)
     a = MenuItemFactory(restaurant=near_restaurant)
     b = MenuItemFactory(restaurant=other)
-    res = api_client.get('/api/explore/products/', {'city_id': '10'})
+    res = api_client.get('/api/explore/products/', {'city_id': str(main_city.id)})
     assert res.status_code == 200
     ids = [r['data']['id'] for r in res.data['results'] if r['type'] == 'item']
     assert a.id in ids
     assert b.id not in ids
-    assert res.data['city_id'] == 10
-    assert all(r.get('distance_km') is None for r in res.data['results'])
+    assert res.data['city_id'] == main_city.id
+    assert res.data['city'] == main_city.name
+
+    by_name = api_client.get('/api/explore/products/', {'city': main_city.name})
+    assert by_name.status_code == 200
+    assert by_name.data['city_id'] == main_city.id
+    assert by_name.data['city'] == main_city.name
+
+
+@pytest.mark.django_db
+def test_city_name_not_found(api_client):
+    res = api_client.get('/api/explore/products/', {'city': 'DoesNotExist'})
+    assert res.status_code == 404
+    assert res.data['error']['code'] == 'CITY_NOT_FOUND'
 
 
 @pytest.mark.django_db
@@ -553,11 +576,10 @@ def test_mixed_unread_items_and_deals_next_page1(api_client, near_restaurant):
 
 @pytest.mark.django_db
 def test_city_plus_distance_excludes_nearer_other_city(
-    api_client, near_restaurant
+    api_client, near_restaurant, main_city, other_city
 ):
-    # near_restaurant is city 10 at 31.52, 74.35
     nearer_other_city = RestaurantFactory()
-    _place(nearer_other_city, 31.5201, 74.3501, city_id=99)
+    _place(nearer_other_city, 31.5201, 74.3501, other_city)
     other_item = MenuItemFactory(restaurant=nearer_other_city, name='WrongCityNear')
     same_city_item = MenuItemFactory(restaurant=near_restaurant, name='RightCity')
 
@@ -567,26 +589,26 @@ def test_city_plus_distance_excludes_nearer_other_city(
             'lat': '31.52',
             'lng': '74.35',
             'distance_km': '5',
-            'city_id': '10',
+            'city_id': str(main_city.id),
         },
     )
     assert res.status_code == 200
     ids = [r['data']['id'] for r in res.data['results'] if r['type'] == 'item']
     assert same_city_item.id in ids
     assert other_item.id not in ids
-    assert res.data['city_id'] == 10
+    assert res.data['city_id'] == main_city.id
     assert res.data['applied_radius_km'] == 5.0
 
 
 @pytest.mark.django_db
-def test_radius_boundary_exactly_distance_km_included(api_client):
+def test_radius_boundary_exactly_distance_km_included(api_client, main_city):
     # Lat/lng are Decimal(6dp). 74.402748 ≈ 4.9999 km east of 74.35 — within <= 5.
     boundary = RestaurantFactory()
-    _place(boundary, 31.52, 74.402748, city_id=10)
+    _place(boundary, 31.52, 74.402748, main_city)
     item = MenuItemFactory(restaurant=boundary, name='Boundary')
 
     beyond = RestaurantFactory()
-    _place(beyond, 31.52, 74.403804, city_id=10)  # ~5.1 km
+    _place(beyond, 31.52, 74.403804, main_city)  # ~5.1 km
     beyond_item = MenuItemFactory(restaurant=beyond, name='Beyond')
 
     res = api_client.get(

@@ -106,7 +106,13 @@ class CustomerPreference(models.Model):
     cuisines = models.JSONField(default=list, blank=True)
     price_ranges = models.JSONField(default=list, blank=True)
     max_distance_km = models.PositiveSmallIntegerField(default=5)
-    city_id = models.PositiveIntegerField(null=True, blank=True)
+    city = models.ForeignKey(
+        'geo.City',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='customer_preferences',
+    )
     language = models.CharField(
         max_length=5,
         choices=LanguageChoice.choices,

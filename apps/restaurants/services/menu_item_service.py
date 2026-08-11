@@ -99,13 +99,13 @@ class MenuItemService:
             restaurant.products_created_this_month = 0
             restaurant.products_quota_month = month_start
             restaurant.save(update_fields=['products_created_this_month', 'products_quota_month'])
-        if restaurant.products_created_this_month >= limit:
-            raise AppAPIException(
-                code='PRODUCT_QUOTA_EXCEEDED',
-                message=f'Free plan allows {limit} products per month.',
-                status_code=403,
-                details={'limit': limit, 'used': restaurant.products_created_this_month},
-            )
+        # if restaurant.products_created_this_month >= limit:
+        #     raise AppAPIException(
+        #         code='PRODUCT_QUOTA_EXCEEDED',
+        #         message=f'Free plan allows {limit} products per month.',
+        #         status_code=403,
+        #         details={'limit': limit, 'used': restaurant.products_created_this_month},
+        #     )
 
     def _validate_sizes(self, sizes: list) -> None:
         if not sizes:

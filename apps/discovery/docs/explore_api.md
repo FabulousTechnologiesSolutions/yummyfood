@@ -16,7 +16,8 @@ Public feed for the Explore tab (`AllowAny`). No request body — all inputs are
 | `lat` | float | no | — | Must be sent **with** `lng`. Range −90…90 |
 | `lng` | float | no | — | Must be sent **with** `lat`. Range −180…180 |
 | `distance_km` | int | no | — | Hard radius when lat/lng set. Allowed: **`1` \| `3` \| `5` \| `10` \| `25` \| `50`**. Requires lat/lng |
-| `city_id` | int | no | — | Filter restaurants by `city_id` |
+| `city_id` | int | no | — | Filter by active city PK |
+| `city` | string | no | — | Filter by active city name (case-insensitive). If both `city` and `city_id` are sent, `city_id` wins |
 | `category_ids` | int[] | no | all | Repeat param or comma-separated: `category_ids=1&category_ids=3` or `category_ids=1,3,5` |
 | `min_price` | number | no | — | Inclusive lower bound. Item → `base_price`; Deal → `deal_price` |
 | `max_price` | number | no | — | Inclusive upper bound |
@@ -37,6 +38,7 @@ GET /api/explore/products/?page=1&page_size=20
 GET /api/explore/products/?lat=31.52&lng=74.35
 GET /api/explore/products/?lat=31.52&lng=74.35&distance_km=5
 GET /api/explore/products/?city_id=10
+GET /api/explore/products/?city=Lahore
 GET /api/explore/products/?lat=31.52&lng=74.35&city_id=10&distance_km=10
 GET /api/explore/products/?category_ids=1,3,5&min_price=500&max_price=1000
 GET /api/explore/products/?minPrice=500&maxPrice=1000&categoryIds=12
@@ -46,7 +48,7 @@ GET /api/explore/products/?minPrice=500&maxPrice=1000&categoryIds=12
 
 ### Filter order (before ranking)
 
-1. **City** (`city_id`)  
+1. **City** (`city_id` or `city` name)  
 2. **Location** (`lat` / `lng` / `distance_km`)  
 3. **Category** (`category_ids`) — Items by M2M categories; Deals if any deal-line menu item is in a selected category  
 4. **Price** (`min_price` / `max_price`)  
@@ -105,6 +107,7 @@ Serving a card writes `ExploreImpression` and an analytics `impression`.
   "next_page": 2,
   "applied_radius_km": 50,
   "city_id": 10,
+  "city": "Lahore",
   "min_price": 500.0,
   "max_price": 1000.0,
   "category_ids": [1, 3, 5]

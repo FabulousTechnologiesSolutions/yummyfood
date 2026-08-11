@@ -62,8 +62,8 @@ class RestaurantProfileUpdateSerializer(serializers.Serializer):
         required=False,
         max_length=3,
     )
-    price_range = serializers.ChoiceField(
-        choices=['$', '$$', '$$$', '$$$$'],
+    price_range = serializers.CharField(
+        max_length=64,
         required=False,
         allow_blank=True,
     )

@@ -48,6 +48,7 @@ class PreferenceService:
             'price_ranges': pref.price_ranges,
             'max_distance_km': pref.max_distance_km,
             'city_id': pref.city_id,
+            'city': pref.city.name if pref.city_id else None,
             'language': pref.language,
             'theme': pref.theme,
         }
@@ -86,7 +87,20 @@ class PreferenceService:
                 )
             pref.max_distance_km = dist
         if 'city_id' in data:
-            pref.city_id = data['city_id']
+            city_id = data['city_id']
+            if city_id in (None, ''):
+                pref.city = None
+            else:
+                from apps.geo.models import City
+
+                city = City.objects.filter(id=city_id, is_active=True).first()
+                if city is None:
+                    raise AppAPIException(
+                        code='CITY_NOT_FOUND',
+                        message='City not found.',
+                        status_code=404,
+                    )
+                pref.city = city
         if 'language' in data and data['language'] is not None:
             pref.language = data['language']
         if 'theme' in data and data['theme'] is not None:

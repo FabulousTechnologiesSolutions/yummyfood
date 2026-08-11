@@ -65,3 +65,25 @@ class IsRestaurantMode(BasePermission):
                 status_code=403,
             )
         return True
+
+
+class IsAdminRole(BasePermission):
+    """Platform admin: is_staff or is_superuser (profiles.platform_admin)."""
+
+    message = 'Admin role required.'
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if getattr(user, 'deleted_at', None) is not None:
+            return False
+        if not user.is_active:
+            return False
+        if not (user.is_staff or user.is_superuser):
+            raise AppAPIException(
+                code='ADMIN_REQUIRED',
+                message='Admin role required.',
+                status_code=403,
+            )
+        return True

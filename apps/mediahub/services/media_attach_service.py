@@ -19,23 +19,24 @@ def _validate_media_payload(media_list: list) -> None:
     if not media_list:
         raise AppAPIException(
             code='MEDIA_REQUIRED',
-            message='At least one image and one video are required.',
+            message='At least one image is required.',
             status_code=400,
         )
     images = [m for m in media_list if m.get('type') == MediaType.IMAGE]
-    videos = [m for m in media_list if m.get('type') == MediaType.VIDEO]
+    # Video is optional for deals and menu items.
+    # videos = [m for m in media_list if m.get('type') == MediaType.VIDEO]
     if len(images) < 1:
         raise AppAPIException(
             code='MEDIA_REQUIRED',
             message='At least one image is required.',
             status_code=400,
         )
-    if len(videos) != 1:
-        raise AppAPIException(
-            code='VIDEO_REQUIRED',
-            message='Exactly one video is required.',
-            status_code=400,
-        )
+    # if len(videos) != 1:
+    #     raise AppAPIException(
+    #         code='VIDEO_REQUIRED',
+    #         message='Exactly one video is required.',
+    #         status_code=400,
+    #     )
     covers = [m for m in images if m.get('is_cover')]
     if len(covers) > 1:
         raise AppAPIException(

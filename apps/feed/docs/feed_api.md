@@ -41,7 +41,8 @@ Public continuous feed. **No request body** — inputs are query params only.
 | `lat` | float | no | — | Must be sent **with** `lng`. Range −90…90 |
 | `lng` | float | no | — | Must be sent **with** `lat`. Range −180…180 |
 | `distance_km` | int | no | — | Hard radius when lat/lng set. Allowed: **`1` \| `3` \| `5` \| `10` \| `25` \| `50`**. Requires lat/lng |
-| `city_id` | int | no | — | Filter restaurants by `city_id` |
+| `city_id` | int | no | — | Filter by active city PK |
+| `city` | string | no | — | Filter by active city name (case-insensitive). If both sent, `city_id` wins |
 | `category_ids` | int[] | no | all | Repeat or comma-separated: `category_ids=1&category_ids=3` or `category_ids=1,3,5` |
 | `min_price` | number | no | — | Inclusive. Item → `base_price`; Deal → `deal_price` |
 | `max_price` | number | no | — | Inclusive |
@@ -95,6 +96,7 @@ GET /api/feed/products/?minPrice=500&maxPrice=1000&categoryIds=12
   "next_page": 2,
   "applied_radius_km": 50.0,
   "city_id": 10,
+  "city": "Lahore",
   "min_price": 500.0,
   "max_price": 1000.0,
   "category_ids": [1, 3, 5]

@@ -17,16 +17,18 @@ from apps.mediahub.models import (
 from apps.restaurants.models import MenuItem
 from tests.accounts.factories import CustomerOnlyUserFactory, RestaurantFactory
 from tests.discovery.factories import DealFactory, MenuItemFactory, ResourceAnalyticsFactory
+from tests.geo.factories import CityFactory
 
 FEED_URL = '/api/feed/products/'
 SEEN_BATCH_URL = '/api/feed/seen/batch/'
 GUEST_IP = '10.0.0.55'
 
 
-def _place(restaurant, lat=31.52, lng=74.35, city_id=10):
+def _place(restaurant, lat=31.52, lng=74.35, city=None):
     restaurant.lat = Decimal(str(lat))
     restaurant.lng = Decimal(str(lng))
-    restaurant.city_id = city_id
+    if city is not None:
+        restaurant.city = city
     restaurant.is_paused = False
     restaurant.is_permanently_closed = False
     restaurant.save()
@@ -34,8 +36,13 @@ def _place(restaurant, lat=31.52, lng=74.35, city_id=10):
 
 
 @pytest.fixture
-def near_restaurant():
-    return _place(RestaurantFactory())
+def main_city(db):
+    return CityFactory(name='FeedMainCity')
+
+
+@pytest.fixture
+def near_restaurant(main_city):
+    return _place(RestaurantFactory(), city=main_city)
 
 
 def attach_video(entity, *, status=MediaProcessingStatus.READY, is_feed_video=True, resolutions=None):

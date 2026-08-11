@@ -816,6 +816,7 @@ Returns/updates the authenticated user’s restaurant. Logo/cover uploads stay o
   "street_address": "12 Mall Road",
   "area": "Gulberg",
   "city_id": 1,
+  "city": "Lahore",
   "lat": "31.520400",
   "lng": "74.358700",
   "is_paused": false,
@@ -858,7 +859,7 @@ Returns/updates the authenticated user’s restaurant. Logo/cover uploads stay o
 | Field | Notes |
 |---|---|
 | `cuisines` | max 3 strings |
-| `price_range` | `$` `$$` `$$$` `$$$$` or `""` |
+| `price_range` | freeform string (e.g. `$$`, `200-7000`) or `""` |
 | phones | E.164 (e.g. `+92300…`); blank clears |
 | `lat` / `lng` | set together; both null clears |
 
@@ -874,7 +875,6 @@ Same shape as GET.
 | 403 | `RESTAURANT_REQUIRED` | Restaurant profile required. |
 | 400 | `RESTAURANT_NAME_REQUIRED` | name is required. |
 | 400 | `INVALID_CUISINES` | At most 3 cuisines are allowed. |
-| 400 | `INVALID_PRICE_RANGE` | Invalid price_range value. |
 | 400 | `INVALID_PHONE` | … |
 | 400 | `INVALID_COORDINATES` | Both lat and lng are required together. |
 

@@ -914,6 +914,7 @@ Combined restaurant profile: essentials + visible categories + published menu it
     "street_address": "",
     "area": "",
     "city_id": null,
+    "city": null,
     "lat": null,
     "lng": null,
     "rating_avg": "0.0",
@@ -955,7 +956,7 @@ Combined restaurant profile: essentials + visible categories + published menu it
 }
 ```
 
-`logo` / `cover` are absolute URLs (R2 public URL when configured, otherwise request host + `/media/...`) or `null`. `lat` / `lng` are decimal strings or `null`.
+`logo` / `cover` are absolute URLs (R2 public URL when configured, otherwise request host + `/media/...`) or `null`. `city_id` / `city` (name) refer to `geo.City`. `lat` / `lng` are decimal strings or `null`.
 
 **Errors:** `RESTAURANT_NOT_FOUND` (404).
 

@@ -2,7 +2,6 @@ from django.db import transaction
 
 from apps.accounts.models import AppMode, CustomerProfile, User
 from apps.accounts.services.auth_service import AuthService
-from apps.accounts.services.preference_service import ALLOWED_PRICE
 from apps.accounts.services.seeding import seed_customer_side, seed_restaurant_side
 from apps.restaurants.services import RestaurantService
 from core.auth import issue_tokens_for_user
@@ -41,6 +40,7 @@ class ProfileService:
             'street_address': restaurant.street_address,
             'area': restaurant.area,
             'city_id': restaurant.city_id,
+            'city': restaurant.city.name if restaurant.city_id else None,
             'lat': str(restaurant.lat) if restaurant.lat is not None else None,
             'lng': str(restaurant.lng) if restaurant.lng is not None else None,
             'is_paused': restaurant.is_paused,
@@ -83,14 +83,7 @@ class ProfileService:
             update_fields.append('cuisines')
 
         if 'price_range' in data:
-            price = data['price_range'] or ''
-            if price and price not in ALLOWED_PRICE:
-                raise AppAPIException(
-                    code='INVALID_PRICE_RANGE',
-                    message='Invalid price_range value.',
-                    status_code=400,
-                )
-            restaurant.price_range = price
+            restaurant.price_range = (data['price_range'] or '').strip()
             update_fields.append('price_range')
 
         for phone_field in ('primary_phone', 'whatsapp_number', 'secondary_phone'):
@@ -112,8 +105,21 @@ class ProfileService:
                 update_fields.append(text_field)
 
         if 'city_id' in data:
-            restaurant.city_id = data['city_id']
-            update_fields.append('city_id')
+            city_id = data['city_id']
+            if city_id in (None, ''):
+                restaurant.city = None
+            else:
+                from apps.geo.models import City
+
+                city = City.objects.filter(id=city_id, is_active=True).first()
+                if city is None:
+                    raise AppAPIException(
+                        code='CITY_NOT_FOUND',
+                        message='City not found.',
+                        status_code=404,
+                    )
+                restaurant.city = city
+            update_fields.append('city')
 
         if 'lat' in data:
             restaurant.lat = data['lat']

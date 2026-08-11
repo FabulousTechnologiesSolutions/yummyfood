@@ -25,7 +25,7 @@ class Restaurant(models.Model):
     slug = models.SlugField(max_length=140, unique=True)
     short_description = models.TextField(blank=True, default='')
     cuisines = models.JSONField(default=list, blank=True)
-    price_range = models.CharField(max_length=4, blank=True, default='')
+    price_range = models.CharField(max_length=64, blank=True, default='')
     logo = models.ImageField(upload_to='restaurants/logos/', blank=True, null=True)
     cover = models.ImageField(upload_to='restaurants/covers/', blank=True, null=True)
     primary_phone = models.CharField(max_length=20, blank=True, default='')
@@ -34,7 +34,13 @@ class Restaurant(models.Model):
     secondary_phone = models.CharField(max_length=20, blank=True, default='')
     street_address = models.CharField(max_length=255, blank=True, default='')
     area = models.CharField(max_length=120, blank=True, default='')
-    city_id = models.PositiveIntegerField(null=True, blank=True)
+    city = models.ForeignKey(
+        'geo.City',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='restaurants',
+    )
     lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     rating_avg = models.DecimalField(max_digits=2, decimal_places=1, default=0)
@@ -71,7 +77,7 @@ class Restaurant(models.Model):
             'profile': bool(self.short_description and self.cuisines and self.price_range),
             'logo_cover': bool(self.logo and self.cover),
             'contact': bool(self.primary_phone),
-            'address': bool(self.street_address and self.city_id and self.lat and self.lng),
+            'address': bool(self.street_address and self.city_id and self.lat is not None and self.lng is not None),
             'menu': has_menu,
         }
         total = len(checks)

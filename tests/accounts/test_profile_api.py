@@ -69,6 +69,9 @@ class TestProfileApi:
         assert res.data['error']['code'] == 'RESTAURANT_REQUIRED'
 
     def test_get_and_patch_restaurant_profile(self, auth_client, restaurant_user):
+        from tests.geo.factories import CityFactory
+
+        city = CityFactory(name='Lahore')
         client = auth_client(restaurant_user)
         get_res = client.get('/api/me/restaurant/')
         assert get_res.status_code == 200
@@ -81,11 +84,11 @@ class TestProfileApi:
                 'name': 'Updated House',
                 'short_description': 'Tasty',
                 'cuisines': ['Burgers', 'Fries'],
-                'price_range': '$$',
+                'price_range': '200-7000',
                 'primary_phone': '03001234567',
                 'street_address': '12 Mall Road',
                 'area': 'Gulberg',
-                'city_id': 1,
+                'city_id': city.id,
                 'lat': '31.520400',
                 'lng': '74.358700',
                 'is_paused': True,
@@ -96,9 +99,10 @@ class TestProfileApi:
         assert patch_res.status_code == 200
         assert patch_res.data['name'] == 'Updated House'
         assert patch_res.data['cuisines'] == ['Burgers', 'Fries']
-        assert patch_res.data['price_range'] == '$$'
+        assert patch_res.data['price_range'] == '200-7000'
         assert patch_res.data['primary_phone'] == '+923001234567'
-        assert patch_res.data['city_id'] == 1
+        assert patch_res.data['city_id'] == city.id
+        assert patch_res.data['city'] == 'Lahore'
         assert patch_res.data['lat'] == '31.520400'
         assert patch_res.data['lng'] == '74.358700'
         assert patch_res.data['is_paused'] is True

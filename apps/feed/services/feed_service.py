@@ -57,10 +57,11 @@ def _parse_float(value, *, name: str) -> float:
 
 
 def parse_geo_params(params) -> dict:
+    from apps.geo.services.city_resolve import resolve_city_from_params
+
     lat_raw = params.get('lat')
     lng_raw = params.get('lng')
     distance_raw = params.get('distance_km')
-    city_raw = params.get('city_id')
 
     has_lat = lat_raw not in (None, '')
     has_lng = lng_raw not in (None, '')
@@ -106,28 +107,13 @@ def parse_geo_params(params) -> dict:
                 status_code=400,
             )
 
-    city_id = None
-    if city_raw not in (None, ''):
-        try:
-            city_id = int(city_raw)
-        except (TypeError, ValueError):
-            raise AppAPIException(
-                code='CITY_NOT_FOUND',
-                message='Invalid city_id.',
-                status_code=404,
-            )
-        if city_id < 1:
-            raise AppAPIException(
-                code='CITY_NOT_FOUND',
-                message='Invalid city_id.',
-                status_code=404,
-            )
-
+    city = resolve_city_from_params(params)
     return {
         'lat': lat,
         'lng': lng,
         'distance_km': distance_km,
-        'city_id': city_id,
+        'city_id': city.id if city is not None else None,
+        'city': city.name if city is not None else None,
     }
 
 
@@ -450,6 +436,7 @@ class FeedService:
             'next_page': page + 1 if has_more else None,
             'applied_radius_km': max_radius if use_distance else None,
             'city_id': geo['city_id'],
+            'city': geo.get('city'),
             'min_price': content['min_price'],
             'max_price': content['max_price'],
             'category_ids': content['category_ids'] or None,

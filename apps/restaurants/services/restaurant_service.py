@@ -48,6 +48,7 @@ def serialize_restaurant_public(restaurant: Restaurant, request=None) -> dict:
         'street_address': restaurant.street_address,
         'area': restaurant.area,
         'city_id': restaurant.city_id,
+        'city': restaurant.city.name if restaurant.city_id else None,
         'lat': str(restaurant.lat) if restaurant.lat is not None else None,
         'lng': str(restaurant.lng) if restaurant.lng is not None else None,
         'rating_avg': str(restaurant.rating_avg),
