@@ -165,9 +165,9 @@ def test_multiple_promos_cycle(api_client, near_restaurant):
         ready_deal(near_restaurant, label=f'CD{i}')
     res = api_client.get('/api/feed/products/?page_size=12', REMOTE_ADDR='10.0.1.1')
     rows = res.data['results']
-    assert rows[0]['data']['id'] == p1.id and rows[0]['slot'] == 'promoted'
-    assert rows[4]['data']['id'] == p2.id and rows[4]['slot'] == 'promoted'
-    assert rows[8]['data']['id'] == p1.id and rows[8]['slot'] == 'promoted'
+    assert rows[0]['data']['id'] == p2.id and rows[0]['slot'] == 'promoted'
+    assert rows[4]['data']['id'] == p1.id and rows[4]['slot'] == 'promoted'
+    assert rows[8]['data']['id'] == p2.id and rows[8]['slot'] == 'promoted'
 
 
 @pytest.mark.django_db
@@ -379,12 +379,22 @@ def test_seen_gte_3s_leaves_unwatched_band(api_client, near_restaurant):
 
 @pytest.mark.django_db
 def test_unwatched_ignores_engagement_score(api_client, near_restaurant):
-    low = ready_item(near_restaurant, name='LowScore')
     high = ready_item(near_restaurant, name='HighScore')
+    low = ready_item(near_restaurant, name='LowScore')
     ResourceAnalyticsFactory(menu_item=high, engagement_score=5000)
     res = api_client.get(FEED_URL, REMOTE_ADDR=GUEST_IP)
     ids = [r['data']['id'] for r in res.data['results'] if r['type'] == 'item']
+    # Newest unwatched first; score must not override recency.
     assert ids.index(low.id) < ids.index(high.id)
+
+
+@pytest.mark.django_db
+def test_unwatched_organic_newest_first(api_client, near_restaurant):
+    older = ready_item(near_restaurant, name='OlderOrganic')
+    newer = ready_item(near_restaurant, name='NewerOrganic')
+    res = api_client.get(FEED_URL, REMOTE_ADDR=GUEST_IP)
+    ids = [r['data']['id'] for r in res.data['results'] if r['type'] == 'item']
+    assert ids.index(newer.id) < ids.index(older.id)
 
 
 @pytest.mark.django_db
@@ -405,6 +415,32 @@ def test_watched_band_uses_engagement_score(api_client, near_restaurant):
     res = api_client.get(FEED_URL, REMOTE_ADDR=GUEST_IP)
     ids = [r['data']['id'] for r in res.data['results'] if r['type'] == 'item']
     assert ids.index(high.id) < ids.index(low.id)
+
+
+@pytest.mark.django_db
+def test_all_organic_watched_rotates_on_page1(api_client, near_restaurant):
+    first = ready_item(near_restaurant, name='AllWatchA')
+    second = ready_item(near_restaurant, name='AllWatchB')
+    ip_hash = hash_ip(GUEST_IP)
+    for it in (first, second):
+        FeedImpression.objects.create(
+            ip_hash=ip_hash,
+            menu_item=it,
+            serve_count=1,
+            watched_ms=4000,
+            outcome=FeedWatchOutcome.WATCH,
+        )
+    ResourceAnalyticsFactory(menu_item=first, engagement_score=100)
+    ResourceAnalyticsFactory(menu_item=second, engagement_score=10)
+    FeedViewerState.objects.create(
+        ip_hash=ip_hash,
+        organic_item_rotate_offset=1,
+    )
+    res = api_client.get(FEED_URL, REMOTE_ADDR=GUEST_IP)
+    ids = [r['data']['id'] for r in res.data['results'] if r['type'] == 'item']
+    assert ids[0] == second.id
+    state = FeedViewerState.objects.get(ip_hash=ip_hash)
+    assert state.organic_item_rotate_offset == 2
 
 
 @pytest.mark.django_db

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone as dt_timezone
 from typing import Any
@@ -24,6 +25,116 @@ from core.utils import haversine_km
 
 
 WATCH_MS = 3000
+logger = logging.getLogger('apps.feed')
+_EPOCH_TS = datetime.min.replace(tzinfo=dt_timezone.utc).timestamp()
+
+
+def _slot_mark(slot: str) -> str:
+    return 'P' if slot == 'promoted' else 'O'
+
+
+def _candidate_title(cand: FeedCandidate) -> str:
+    obj = cand.obj
+    return getattr(obj, 'name', None) or getattr(obj, 'label', None) or ''
+
+
+def _log_feed_sequence(
+    *,
+    geo: dict,
+    viewer: ViewerIdentity,
+    page: int,
+    page_size: int,
+    composed: list[dict],
+    page_slice: list[dict],
+    has_more: bool,
+    next_page: int | None,
+    loc_item_count: int,
+    loc_deal_count: int,
+    filtered_item_count: int,
+    filtered_deal_count: int,
+    ready_item_count: int,
+    ready_deal_count: int,
+    promoted: list,
+    organic_items: list,
+    organic_deals: list,
+    all_promoted_watched: bool,
+    all_organic_items_watched: bool,
+    all_organic_deals_watched: bool,
+    promo_rot: int,
+    item_rot: int,
+    deal_rot: int,
+) -> None:
+    marks = [_slot_mark(entry['slot']) for entry in page_slice]
+    pattern = ''.join(marks) or '-'
+    seen_keys: dict[tuple[str, int], int] = {}
+    duplicate_ids: list[int] = []
+    for entry in page_slice:
+        cand = entry['candidate']
+        key = (cand.type, cand.id)
+        seen_keys[key] = seen_keys.get(key, 0) + 1
+        if seen_keys[key] == 2:
+            duplicate_ids.append(cand.id)
+    recycle = all_promoted_watched or all_organic_items_watched or all_organic_deals_watched
+    logger.info(
+        'feed_sequence city=%s city_id=%s mode=%s count=%s pattern=%s '
+        'page=%s limit=%s returned=%s has_more=%s next_page=%s '
+        'loc_items=%s loc_deals=%s filtered_items=%s filtered_deals=%s '
+        'ready_items=%s ready_deals=%s '
+        'promo=%s org_items=%s org_deals=%s '
+        'all_promo_watched=%s all_org_items_watched=%s all_org_deals_watched=%s '
+        'promo_rot=%s item_rot=%s deal_rot=%s viewer=%s DUPLICATE_IDS=%s',
+        geo.get('city'),
+        geo.get('city_id'),
+        'recycle' if recycle else 'fresh',
+        len(composed),
+        pattern,
+        page,
+        page_size,
+        len(page_slice),
+        has_more,
+        next_page,
+        loc_item_count,
+        loc_deal_count,
+        filtered_item_count,
+        filtered_deal_count,
+        ready_item_count,
+        ready_deal_count,
+        len(promoted),
+        len(organic_items),
+        len(organic_deals),
+        all_promoted_watched,
+        all_organic_items_watched,
+        all_organic_deals_watched,
+        promo_rot,
+        item_rot,
+        deal_rot,
+        viewer.user_id or viewer.ip_hash,
+        duplicate_ids,
+    )
+    for idx, entry in enumerate(page_slice):
+        cand = entry['candidate']
+        logger.info(
+            '%02d %s  %s  %s',
+            idx,
+            _slot_mark(entry['slot']),
+            cand.id,
+            _candidate_title(cand),
+        )
+
+
+def _recency_ts(obj, *, promoted: bool = False) -> float:
+    ts = None
+    if promoted:
+        ts = getattr(obj, 'promoted_starts_at', None)
+    if ts is None:
+        ts = getattr(obj, 'published_at', None)
+    if ts is None:
+        ts = getattr(obj, 'created_at', None)
+    if ts is None:
+        return _EPOCH_TS
+    if timezone.is_naive(ts):
+        ts = timezone.make_aware(ts, dt_timezone.utc)
+    return ts.timestamp()
 
 
 @dataclass
@@ -311,6 +422,8 @@ class FeedService:
             max_radius=max_radius,
             now=now,
         )
+        loc_item_count = len(item_cands)
+        loc_deal_count = len(deal_cands)
         # 3) Category filter
         item_cands = filter_by_category(item_cands, content['category_ids'])
         deal_cands = filter_by_category(deal_cands, content['category_ids'])
@@ -325,6 +438,8 @@ class FeedService:
             min_price=content['min_price'],
             max_price=content['max_price'],
         )
+        filtered_item_count = len(item_cands)
+        filtered_deal_count = len(deal_cands)
         # 5) Explore ranking / compose on filtered pools
         impressions = self._load_impressions(viewer, item_cands, deal_cands)
         scores = self._load_scores(item_cands, deal_cands)
@@ -339,6 +454,8 @@ class FeedService:
 
         item_cands = [c for c in item_cands if _has_ready_feed_video(c.obj)]
         deal_cands = [c for c in deal_cands if _has_ready_feed_video(c.obj)]
+        ready_item_count = len(item_cands)
+        ready_deal_count = len(deal_cands)
 
         promoted = [
             c
@@ -353,10 +470,20 @@ class FeedService:
         organic_items = self._sort_organic(organic_items, use_distance=use_distance)
         organic_deals = self._sort_organic(organic_deals, use_distance=use_distance)
 
-        # Unwatched promoted stay on top. Rotate only after every promo is watched (>=3s).
+        # Unwatched stay on top. Rotate a pool only after every card in it is watched (>=3s).
         all_promoted_watched = bool(promoted) and all(c.is_watched for c in promoted)
+        all_organic_items_watched = bool(organic_items) and all(
+            c.is_watched for c in organic_items
+        )
+        all_organic_deals_watched = bool(organic_deals) and all(
+            c.is_watched for c in organic_deals
+        )
         if all_promoted_watched:
             promoted = _rotate(promoted, state.promoted_rotate_offset)
+        if all_organic_items_watched:
+            organic_items = _rotate(organic_items, state.organic_item_rotate_offset)
+        if all_organic_deals_watched:
+            organic_deals = _rotate(organic_deals, state.organic_deal_rotate_offset)
 
         composed = self._compose_all(
             promoted=promoted,
@@ -410,13 +537,16 @@ class FeedService:
                 row['distance_km'] = None
             results.append(row)
 
+        promo_rot = state.promoted_rotate_offset
+        item_rot = state.organic_item_rotate_offset
+        deal_rot = state.organic_deal_rotate_offset
         if page == 1:
-            # Advance promo rotate only when it was applied (all promoted already watched).
             if served_promoted and all_promoted_watched:
                 state.promoted_rotate_offset += 1
-            # Organic offsets kept for diagnostics / future use; order uses impressions.
-            state.organic_item_rotate_offset += served_items
-            state.organic_deal_rotate_offset += served_deals
+            if all_organic_items_watched:
+                state.organic_item_rotate_offset += 1
+            if all_organic_deals_watched:
+                state.organic_deal_rotate_offset += 1
             state.last_rotated_at = timezone.now()
             state.save(
                 update_fields=[
@@ -428,12 +558,39 @@ class FeedService:
                 ]
             )
 
+        next_page = page + 1 if has_more else None
+        _log_feed_sequence(
+            geo=geo,
+            viewer=viewer,
+            page=page,
+            page_size=page_size,
+            composed=composed,
+            page_slice=page_slice,
+            has_more=has_more,
+            next_page=next_page,
+            loc_item_count=loc_item_count,
+            loc_deal_count=loc_deal_count,
+            filtered_item_count=filtered_item_count,
+            filtered_deal_count=filtered_deal_count,
+            ready_item_count=ready_item_count,
+            ready_deal_count=ready_deal_count,
+            promoted=promoted,
+            organic_items=organic_items,
+            organic_deals=organic_deals,
+            all_promoted_watched=all_promoted_watched,
+            all_organic_items_watched=all_organic_items_watched,
+            all_organic_deals_watched=all_organic_deals_watched,
+            promo_rot=promo_rot,
+            item_rot=item_rot,
+            deal_rot=deal_rot,
+        )
+
         return {
             'results': results,
             'page': page,
             'page_size': page_size,
             'has_more': has_more,
-            'next_page': page + 1 if has_more else None,
+            'next_page': next_page,
             'applied_radius_km': max_radius if use_distance else None,
             'city_id': geo['city_id'],
             'city': geo.get('city'),
@@ -562,46 +719,40 @@ class FeedService:
         return result
 
     def _sort_promoted(self, cands: list[FeedCandidate], *, use_distance: bool):
-        """Unwatched promoted first; watched by engagement_score."""
+        """Unwatched promoted first (newest); watched by engagement_score."""
         if not cands:
             return []
 
         def key(c: FeedCandidate):
+            recency = -_recency_ts(c.obj, promoted=True)
             if not c.is_watched:
                 if use_distance:
                     dist = c.distance_km if c.distance_km is not None else 1e18
-                    return (0, dist, c.id)
-                return (0, c.id)
+                    return (0, dist, recency, c.id)
+                return (0, recency, c.id)
             if use_distance:
                 dist = c.distance_km if c.distance_km is not None else 1e18
-                return (1, -c.score, dist, c.id)
-            return (1, -c.score, c.id)
+                return (1, -c.score, dist, recency, c.id)
+            return (1, -c.score, recency, c.id)
 
         return sorted(cands, key=key)
 
     def _sort_organic(self, cands: list[FeedCandidate], *, use_distance: bool):
-        """Unwatched (watched_ms < 3000) on top; watched band by score."""
+        """Unwatched newest-first; watched ≥3s sink; all-watched uses analytics."""
         if not cands:
             return []
         all_watched = all(c.is_watched for c in cands)
-        epoch = datetime.min.replace(tzinfo=dt_timezone.utc)
 
         def key(c: FeedCandidate):
+            recency = -_recency_ts(c.obj)
             if all_watched:
-                return (
-                    -c.score,
-                    -(c.watched_ms or 0),
-                    c.id,
-                )
+                return (-c.score, recency, c.id)
             if not c.is_watched:
-                dist = (
-                    c.distance_km
-                    if (use_distance and c.distance_km is not None)
-                    else 0.0
-                )
-                return (0, dist if use_distance else 0.0, c.id)
-            last = c.last_served_at or epoch
-            return (1, -c.score, last, c.id)
+                if use_distance:
+                    dist = c.distance_km if c.distance_km is not None else 1e18
+                    return (0, dist, recency, c.id)
+                return (0, recency, c.id)
+            return (1, -c.score, recency, c.id)
 
         return sorted(cands, key=key)
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from django.db import transaction
 
 from apps.analytics.services.event_service import EventService
@@ -12,6 +14,7 @@ from apps.restaurants.models import Deal, DealStatus, MenuItem, MenuItemStatus
 from core.exceptions import AppAPIException
 
 MAX_SEEN_BATCH_ITEMS = 10
+logger = logging.getLogger('apps.feed')
 
 OUTCOME_RANK = {
     '': 0,
@@ -215,4 +218,16 @@ def record_seen_batch(*, viewer: ViewerIdentity, items: list[dict], user=None) -
                 }
             )
 
-    return {'recorded_count': recorded_count, 'results': results}
+    payload = {'recorded_count': recorded_count, 'results': results}
+    logger.info(
+        'feed.seen viewer=%s incoming=%s deduped=%s recorded=%s items=%s',
+        viewer.user_id or viewer.ip_hash,
+        len(items),
+        len(best),
+        recorded_count,
+        [
+            (i.get('event_model'), i.get('resource_id'), i.get('watched_ms'))
+            for i in items
+        ],
+    )
+    return payload

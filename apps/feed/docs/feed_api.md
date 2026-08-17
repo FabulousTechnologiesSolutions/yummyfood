@@ -30,8 +30,9 @@ Public continuous feed. **No request body** — inputs are query params only.
 
 - Eligibility: entity must have a video with `processing_status=ready` and `is_feed_video=true`
 - Compose: repeating **`P → O → D → O`** (promo cycles via modulo; organic cross-fill; stop when organics empty)
-- Ranking: **unwatched** (`FeedImpression.watched_ms` null or `< 3000`) on top; GET serve does **not** sink cards
-- Watched band (`watched_ms >= 3000`): anonymous `ResourceAnalytics.engagement_score`
+- Ranking: **unwatched** (`watched_ms` null or `< 3000`) on top, **newest first** (promo → `promoted_starts_at`; item → `published_at` / `created_at`; deal → `created_at`)
+- Watched (`watched_ms >= 3000`) **sink** below unwatched in the same pool; GET serve does **not** set `watched_ms`
+- When **all** cards in a pool are watched: order by anonymous `ResourceAnalytics.engagement_score`, then rotate on each `page=1`
 - On serve: upsert `FeedImpression.serve_count` + analytics `impression` (does **not** set `watched_ms`)
 
 ### Query params
