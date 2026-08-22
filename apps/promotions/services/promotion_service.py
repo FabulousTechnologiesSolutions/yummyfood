@@ -143,7 +143,7 @@ class PromotionService:
         ).order_by('-created_at')
         if status_filter:
             qs = qs.filter(status=status_filter)
-        return list(qs)
+        return qs
 
     def approve(
         self,
@@ -154,9 +154,9 @@ class PromotionService:
         ends_at=None,
     ) -> PromotionRequest:
         try:
-            req = PromotionRequest.objects.select_related('menu_item', 'deal').get(
-                pk=request_id
-            )
+            req = PromotionRequest.objects.select_related(
+                'restaurant', 'menu_item', 'deal'
+            ).get(pk=request_id)
         except PromotionRequest.DoesNotExist:
             raise AppAPIException(
                 code='PROMOTION_REQUEST_NOT_FOUND',
@@ -234,7 +234,9 @@ class PromotionService:
 
     def reject(self, *, request_id: int, admin_user, admin_note: str) -> PromotionRequest:
         try:
-            req = PromotionRequest.objects.get(pk=request_id)
+            req = PromotionRequest.objects.select_related(
+                'restaurant', 'menu_item', 'deal'
+            ).get(pk=request_id)
         except PromotionRequest.DoesNotExist:
             raise AppAPIException(
                 code='PROMOTION_REQUEST_NOT_FOUND',

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.engagement.models import SavedTargetType
+from apps.engagement.models import ReportReason, SavedTargetType
 
 
 class SaveCreateSerializer(serializers.Serializer):
@@ -31,3 +31,13 @@ class SaveCreateSerializer(serializers.Serializer):
                     {'menu_item_id': 'Do not send menu_item_id for target_type=deal.'}
                 )
         return attrs
+
+
+class ReportCreateSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(choices=ReportReason.choices)
+    description = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class RatingUpsertSerializer(serializers.Serializer):
+    stars = serializers.IntegerField()
+    description = serializers.CharField(required=False, allow_blank=True, default='')

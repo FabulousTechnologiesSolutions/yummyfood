@@ -11,7 +11,7 @@ _E164_GENERIC = re.compile(r'^\+[1-9]\d{7,14}$')
 
 
 def normalize_phone(phone: str) -> str:
-    """Normalize Pakistan-style mobiles to E.164; accept generic E.164."""
+    """Normalize Pakistan mobiles to local 03XXXXXXXXX form."""
     if not phone or not isinstance(phone, str):
         raise AppAPIException(
             code='INVALID_PHONE',
@@ -21,14 +21,16 @@ def normalize_phone(phone: str) -> str:
     raw = re.sub(r'[\s\-()]', '', phone.strip())
     if raw.startswith('00'):
         raw = '+' + raw[2:]
-    if _E164_PK.match(raw) or _E164_GENERIC.match(raw):
-        return raw
+    # +923XXXXXXXXX → 03XXXXXXXXX
+    if _E164_PK.match(raw):
+        return '0' + raw[3:]  # drop +92, keep 3XXXXXXXXX → 03XXXXXXXXX
+    # 03XXXXXXXXX or 3XXXXXXXXX → 03XXXXXXXXX
     if _PK_LOCAL.match(raw):
         digits = raw[1:] if raw.startswith('0') else raw
-        return f'+92{digits}'
+        return f'0{digits}'
     raise AppAPIException(
         code='INVALID_PHONE',
-        message='Invalid phone number. Use E.164 (e.g. +923008452119).',
+        message='Invalid phone number. Use 03XXXXXXXXX (e.g. 03177370119).',
         status_code=400,
     )
 

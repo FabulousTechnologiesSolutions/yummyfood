@@ -1,9 +1,11 @@
 from django.urls import path
 
-from apps.promotions.views import (
-    AdminPromotionApproveView,
-    AdminPromotionRejectView,
+from apps.accounts.admin.views.promotions import (
     AdminPromotionRequestListView,
+    LegacyAdminPromotionApproveView,
+    LegacyAdminPromotionRejectView,
+)
+from apps.promotions.views import (
     PromotionRequestDetailView,
     PromotionRequestListCreateView,
 )
@@ -26,12 +28,12 @@ urlpatterns = [
     ),
     path(
         'admin-api/promotion-requests/<int:request_id>/approve/',
-        AdminPromotionApproveView.as_view(),
+        LegacyAdminPromotionApproveView.as_view(),
         name='admin-promotion-approve',
     ),
     path(
         'admin-api/promotion-requests/<int:request_id>/reject/',
-        AdminPromotionRejectView.as_view(),
+        LegacyAdminPromotionRejectView.as_view(),
         name='admin-promotion-reject',
     ),
 ]

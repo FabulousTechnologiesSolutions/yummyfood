@@ -1,15 +1,10 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsAuthenticatedAndActive
-from apps.promotions.serializers import (
-    PromotionApproveSerializer,
-    PromotionRejectSerializer,
-    PromotionRequestCreateSerializer,
-)
+from apps.promotions.serializers import PromotionRequestCreateSerializer
 from apps.promotions.services import PromotionService, serialize_promotion_request
 from core.exceptions import AppAPIException
 from core.permissions import IsRestaurantMode, IsRestaurantOwner
@@ -57,43 +52,5 @@ class PromotionRequestDetailView(RestaurantOwnerMixin, APIView):
         req = PromotionService().get_for_restaurant(
             restaurant=restaurant,
             request_id=request_id,
-        )
-        return Response(serialize_promotion_request(req))
-
-
-class AdminPromotionRequestListView(APIView):
-    permission_classes = [IsAuthenticatedAndActive, IsAdminUser]
-
-    def get(self, request):
-        status_filter = request.query_params.get('status') or None
-        items = PromotionService().list_admin(status_filter=status_filter)
-        return Response([serialize_promotion_request(r) for r in items])
-
-
-class AdminPromotionApproveView(APIView):
-    permission_classes = [IsAuthenticatedAndActive, IsAdminUser]
-
-    def post(self, request, request_id: int):
-        ser = PromotionApproveSerializer(data=request.data or {})
-        ser.is_valid(raise_exception=True)
-        req = PromotionService().approve(
-            request_id=request_id,
-            admin_user=request.user,
-            goes_live_at=ser.validated_data.get('goes_live_at'),
-            ends_at=ser.validated_data.get('ends_at'),
-        )
-        return Response(serialize_promotion_request(req))
-
-
-class AdminPromotionRejectView(APIView):
-    permission_classes = [IsAuthenticatedAndActive, IsAdminUser]
-
-    def post(self, request, request_id: int):
-        ser = PromotionRejectSerializer(data=request.data or {})
-        ser.is_valid(raise_exception=True)
-        req = PromotionService().reject(
-            request_id=request_id,
-            admin_user=request.user,
-            admin_note=ser.validated_data.get('admin_note', ''),
         )
         return Response(serialize_promotion_request(req))
